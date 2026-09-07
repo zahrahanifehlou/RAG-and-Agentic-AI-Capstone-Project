@@ -22,7 +22,29 @@ EXAMPLE_RESTAURANT_PARAGRAPH = "Down in **Santa Monica**, **Mar de Cortez** serv
 # This new function combines and uses the generative models you defined in lesson 1 to structure a given new restaurant paragraph.
 # In your `restaurant_data_management.py`, copy and paste the following code block and complete the functions.
 #   **Important**: Take a screenshot of your implementation of the `new_data_entry_process()` and name it `M1L3_new_data_entry_process.jpg`.
+def load_data(file_path):
+    """Load restaurant data from JSON file."""
+    if not os.path.exists(file_path):
+        return []
 
+    with open(file_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_data(data, file_path):
+    """Save restaurant data to JSON file."""
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
+
+
+def show_restaurant_card(data, index):
+    """Display one restaurant record."""
+    restaurant = data[index]
+
+    print("\n--- Restaurant Details ---")
+
+    for key, value in restaurant.items():
+        print(f"{key}: {value}")
 
 #Update your restaurant_data_structure_prompt_generation
 def restaurant_data_structure_prompt_generation(restaurant_paragraph):
@@ -287,8 +309,9 @@ class TestRestaurantDatabase(unittest.TestCase):
         """Clean up the test file after tests."""
         if os.path.exists(self.test_file):
             os.remove(self.test_file)
-		if os.path.exists(self.test_file_backup):
-			os.remove(self.test_file_backup)
+
+        if os.path.exists(self.test_file_backup):
+            os.remove(self.test_file_backup)
 
     @patch('builtins.input')
     @patch('sys.stdout', new_callable=io.StringIO)
@@ -348,8 +371,8 @@ class TestRestaurantDatabase(unittest.TestCase):
         self.assertIn("Operation cancelled.", mock_stdout.getvalue())
 		
 if __name__ == "__main__":
-    unittest.main() # Unit Test
-	# manage_restaurants(FILEPATH, BACKUP_PATH) # Actual UI Call
+    unittest.main()  # Unit Test
+    # manage_restaurants(FILEPATH, BACKUP_PATH)  # Actual UI Call
 
 
 
