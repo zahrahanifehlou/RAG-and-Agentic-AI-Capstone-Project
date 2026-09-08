@@ -2,7 +2,7 @@
 
 An end-to-end food & restaurant recommendation system built lab by lab: from turning messy text and images into structured data, to a multimodal vector index with hybrid retrieval, to a multi-agent recommender exposed through a chatbot UI.
 
-The labs run locally with **Ollama** (`llava`) for Modules 1, and open-source embedding models for Module 2. Module 3 uses the **OpenAI API**.
+Everything runs **locally**: **Ollama** (`llava`, `llama3.2:3b`) drives the LLM/agent labs and open-source Hugging Face models handle the embeddings. Only M3L3 still calls the **OpenAI API** as shipped.
 
 ## Repository layout
 
@@ -14,6 +14,7 @@ restaurant_data_management.py        # CLI app + unit tests for M1L3
 M2L1.ipynb                           # Build the multimodal vector index
 M2L2_Lab.ipynb                       # Similarity retrieval + metadata filtering
 M2L3_Lab.ipynb                       # Multimodal fusion & reranking
+M3L0_Assignment-Overview.ipynb       # Conceptual overview: agents, ReAct, task design
 M3L1_Design_Specialized_Agents.ipynb
 M3L2_Implement_Multi_Agent_Systems.ipynb
 M3L3_Build_Chatbot_Interface.ipynb
@@ -77,6 +78,17 @@ Persistent store: **ChromaDB** at `~/chroma_multimodal`, two collections —
 
 ## Module 3 — Agentic system
 
+Modules 3.1 and 3.2 were **ported from the OpenAI API to local Ollama models** (the original
+`OpenAI()` / `gpt-5` setup is kept commented out for reference), so the agent labs run offline:
+`llava:latest` in M3L1 and `llama3.2:3b` in M3L2, both via `ChatOllama(temperature=0)`.
+
+### M3L0 — Assignment overview (theory)
+Notes-only notebook framing the module: why multi-agent systems (specialization,
+maintainability, scalability, separation of concerns), the purpose of each of the six agents,
+the role / goal / backstory design pattern, **ReAct** (think → act → observe → repeat) and
+**few-shot** prompting, and how to specify a task (description, expected output, context,
+dependencies; sequential vs parallel).
+
 ### M3L1 — Designing specialized agents
 Six role/goal/backstory agents defined as config dicts and rendered into system prompts by `create_agent_prompt`:
 1. User Profile Generator
@@ -86,13 +98,16 @@ Six role/goal/backstory agents defined as config dicts and rendered into system 
 5. Nutrition Expert
 6. Recommendation Expert
 
-Each agent has a matching task definition; individual agents are smoke-tested with `test_agent`.
+Each agent has a matching task definition; individual agents are smoke-tested with `test_agent`,
+which invokes the local model with the generated system prompt.
 
 ### M3L2 — Multi-agent orchestration
-- A shared `AgentState` (`TypedDict`) threaded through the workflow.
-- One node function per agent (`node_generate_profile`, `node_retrieve_candidates`, `node_analyze_trends`, `node_analyze_styles`, `node_evaluate_nutrition`, `node_generate_recommendations`).
-- Phased execution with **parallel fan-out** (trends / styles / nutrition run concurrently via `ThreadPoolExecutor`) before the final synthesis step.
-- `run_workflow(user_input)` drives the graph; tested on a health-conscious user and an adventurous foodie, plus an `evaluate_recommendations` scoring pass.
+- A shared 9-field state dict (`INITIAL_STATE`) threaded through the workflow: input, user profile, retrieved restaurants/recipes, the three analyses, final recommendations, and a `workflow_step` marker.
+- `call_agent(agent_key, user_message)` builds the role/goal/backstory system prompt from `agent_configs` and invokes Ollama.
+- `extract_json(text)` — a robust parser for small local models: strips markdown fences, regex-scans for every JSON object in the reply (including one level of nesting), merges them, and falls back to parsing the whole cleaned string. This was needed because `llama3.2:3b` is far chattier than GPT about returning bare JSON.
+- One node function per agent (`node_generate_profile`, `node_retrieve_candidates`, `node_analyze_trends`, `node_analyze_styles`, `node_evaluate_nutrition`, `node_generate_recommendations`), with per-node test cells.
+- `run_workflow(user_input)` is a **hand-rolled orchestrator** (no LangGraph in the current version) with four phases: sequential profile → sequential retrieval → **parallel fan-out** of trends / styles / nutrition via `ThreadPoolExecutor(max_workers=3)`, each on its own copy of the state and merged back → sequential synthesis.
+- Tested on a health-conscious user and an adventurous foodie, plus an `evaluate_recommendations` scoring pass.
 
 ### M3L3 — Chatbot interface
 - **Gradio** `ChatInterface`, starting from an echo bot and built up incrementally.
@@ -103,19 +118,20 @@ Each agent has a matching task definition; individual agents are smoke-tested wi
 ## Setup
 
 ```bash
-# Module 1 (local models)
+# Local models (Modules 1 and 3.1/3.2)
 ollama pull llava
+ollama pull llama3.2:3b
 pip install langchain-ollama pydantic tenacity pillow
 
 # Module 2
 pip install langchain==0.3.27 langchain-community==0.3.31 langchain-chroma==0.2.6 \
             sentence-transformers transformers torch
 
-# Module 3
-pip install openai==1.99.9 langchain langchain-openai langgraph gradio==4.29.0
-export OPENAI_API_KEY=...   # required for M3L1–M3L3
+# Module 3.3 (chatbot UI, still OpenAI-backed)
+pip install langchain-openai gradio==4.29.0
+export OPENAI_API_KEY=...   # only needed for M3L3
 ```
 
 ## Skills covered
 
-Prompt engineering for structured output · Pydantic schema validation · LLM self-repair loops · retry/backoff around model calls · vision-LLM image captioning · multimodal dataset augmentation · CLI app design with mocked-IO unit tests · sentence-transformer and SigLIP embeddings · ChromaDB vector stores and metadata filtering · cross-modal retrieval, score normalization and fusion reranking · agent role design · stateful multi-agent workflows with parallel execution · intent classification · Gradio chatbot deployment.
+Prompt engineering for structured output · Pydantic schema validation · LLM self-repair loops · defensive JSON extraction from chatty small models · retry/backoff around model calls · vision-LLM image captioning · multimodal dataset augmentation · CLI app design with mocked-IO unit tests · sentence-transformer and SigLIP embeddings · ChromaDB vector stores and metadata filtering · cross-modal retrieval, score normalization and fusion reranking · agent role design and ReAct / few-shot patterns · stateful multi-agent workflows with sequential and parallel phases · swapping hosted LLMs for local Ollama models · intent classification · Gradio chatbot deployment.
